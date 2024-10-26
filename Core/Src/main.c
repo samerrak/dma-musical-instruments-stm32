@@ -18,9 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "arm_math.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#define SAMPLE_NUMBER 15
+#define AMPLITUDE 4095 // design choice 12 bit DAC resolution
+#define PERIOD 15
 
 /* USER CODE END Includes */
 
@@ -42,11 +47,13 @@
 /* Private variables ---------------------------------------------------------*/
 DAC_HandleTypeDef hdac1;
 DMA_HandleTypeDef hdma_dac1_ch1;
-
+uint16_t channel1, channel2;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-
+void generateSaw(uint16_t *sampleArray);
+void generateTriangle(uint16_t *sampleArray);
+void generateSin(float32_t *sampleArray);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,18 +105,46 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
+  uint16_t sawSamples[SAMPLE_NUMBER];
+  uint16_t triangleSamples[SAMPLE_NUMBER];
+  float32_t sinSamples[SAMPLE_NUMBER];
+
+  generateSaw(sawSamples);
+  generateTriangle(triangleSamples);
+  generateSin(sinSamples);
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_2); // pg 224 in HAL driver manual
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  for (int i = 0; i < SAMPLE_NUMBER; i++) {
+		  channel1 = sawSamples[i];
+		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, channel1);
+		  // channel2 = triangleSamples[i];
+		  channel2 = sinSamples[i];
+		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, channel2); // pg 224 in HAL driver manual
+		  HAL_Delay(0.5); // Period =  Number of Samples x Delay
+	  	}
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
+
+  HAL_DAC_Stop(&hdac1, DAC_CHANNEL_1);
+  HAL_DAC_Stop(&hdac1, DAC_CHANNEL_2); // pg 224 HAL driver
+
+
+
   /* USER CODE END 3 */
 }
+
+
 
 /**
   * @brief System Clock Configuration
@@ -190,7 +225,7 @@ static void MX_DAC1_Init(void)
   /** DAC channel OUT1 config
   */
   sConfig.DAC_SampleAndHold = DAC_SAMPLEANDHOLD_DISABLE;
-  sConfig.DAC_Trigger = DAC_TRIGGER_T2_TRGO;
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
   sConfig.DAC_HighFrequency = DAC_HIGH_FREQUENCY_INTERFACE_MODE_ABOVE_80MHZ;
   sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
@@ -305,7 +340,33 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+// we set amplitude to 20 to avoid dealing with floats
+void generateSaw(uint16_t *sampleArray) {
+	for (int i = 0; i <  SAMPLE_NUMBER; i++) {
+    sampleArray[i] = AMPLITUDE*((i + 0.0)/ SAMPLE_NUMBER);
+  }
+}
 
+void generateTriangle(uint16_t *sampleArray) {
+    // Generate the rising part of the triangle
+    for (int i = 0; i < SAMPLE_NUMBER / 2; i++) {
+        sampleArray[i] = AMPLITUDE * ((i + 0.0) / (SAMPLE_NUMBER / 2));
+    }
+
+    // Generate the falling part of the triangle
+    for (int i = SAMPLE_NUMBER / 2; i < SAMPLE_NUMBER; i++) {
+        sampleArray[i] = AMPLITUDE * (1.0 - ((i - SAMPLE_NUMBER / 2 + 0.0) / (SAMPLE_NUMBER / 2)));
+    }
+}
+
+void generateSin(float32_t *sampleArray) {
+	uint32_t amp = AMPLITUDE/2;
+	float32_t counter = 0.0;
+	for (int i = 0; i <  SAMPLE_NUMBER; i++) {
+	    sampleArray[i] = (amp * arm_sin_f32(counter)) + amp; //https://arm-software.github.io/CMSIS-DSP/main/group__sin.html
+	    counter += (2.0*PI)/15.0;
+	}
+}
 /* USER CODE END 4 */
 
 /**
