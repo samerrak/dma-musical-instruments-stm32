@@ -31,7 +31,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE_NUMBER 100 // 80 Mhz / 44.1 kHz => Clock F / Sample Rate
 #define AMPLITUDE 4095 // design choice 12 bit DAC resolution
 #define PERIOD 15
 /* USER CODE END PD */
@@ -50,9 +49,9 @@ TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN PV */
 void generateSaw(uint16_t *sampleArray);
 void generateTriangle(uint16_t *sampleArray);
-void generateSin(float32_t *sampleArray);
+void generateSin(float32_t *sampleArray, int samp);
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin);
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim);
+// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim);
 
 /* USER CODE END PV */
 
@@ -68,12 +67,16 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint32_t SAMPLE_NUMBER; // 80 Mhz / 44.1 kHz => Clock F / Sample Rate
 uint32_t channel1, channel2;
 uint32_t mode; // controls mode of output
 uint8_t currSample; // counter for samples in timer
-uint16_t sawSamples[SAMPLE_NUMBER];
-uint16_t triangleSamples[SAMPLE_NUMBER];
-float32_t sinSamples[SAMPLE_NUMBER];
+float32_t EightkHzSamples[1000]; // Set prescaler equal to 10, find counter => 5 seconds
+float32_t FourkHzSamples[2000];
+float32_t TwokHzSamples[4000];
+// uint16_t sawSamples[SAMPLE_NUMBER];
+// uint16_t triangleSamples[SAMPLE_NUMBER];
+
 
 /* USER CODE END 0 */
 
@@ -85,7 +88,10 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	SAMPLE_NUMBER = 1000;
+	generateSin(EightkHzSamples, 1000);
+	generateSin(FourkHzSamples, 2000);
+	generateSin(TwokHzSamples, 4000);
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -115,11 +121,14 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2); // enable interrupts
 
-  generateSaw(sawSamples);
-  generateTriangle(triangleSamples);
-  generateSin(sinSamples);
-  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
+  // generateSaw(sawSamples);
+  // generateTriangle(triangleSamples);
+
+
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1); // Previous part
   // HAL_DAC_Start(&hdac1, DAC_CHANNEL_2); // pg 224 in HAL driver manual
+
+  //HAL_StatusTypeDef x = HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint16_t*) c6Samples, (uint16_t) SAMPLE_NUMBER, DAC_ALIGN_12B_R);
 
 
   /* USER CODE END 2 */
@@ -231,7 +240,7 @@ static void MX_DAC1_Init(void)
   /** DAC channel OUT1 config
   */
   sConfig.DAC_SampleAndHold = DAC_SAMPLEANDHOLD_DISABLE;
-  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  sConfig.DAC_Trigger = DAC_TRIGGER_T2_TRGO;
   sConfig.DAC_HighFrequency = DAC_HIGH_FREQUENCY_INTERFACE_MODE_ABOVE_80MHZ;
   sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
@@ -243,6 +252,7 @@ static void MX_DAC1_Init(void)
 
   /** DAC channel OUT2 config
   */
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
   if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -272,9 +282,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 1814;
+  htim2.Init.Prescaler = 8;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 80;
+  htim2.Init.Period = 1000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -311,6 +321,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+  /* DMAMUX1_OVR_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMAMUX1_OVR_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMAMUX1_OVR_IRQn);
 
 }
 
@@ -366,6 +379,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/** Timer Interrupt
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim) {
 	if (htim == &htim2) {
 		if (currSample == SAMPLE_NUMBER)
@@ -379,21 +393,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim) {
 
 	}
 }
-
+**/
 
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin) {
 	if (GPIO_Pin == myButton_Pin) {
 		mode = ((mode+1) % 4);
 		HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_RESET); // mode 0 (only blue)
 		HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_RESET);
+		HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
 		if (mode == 1) { // blue and green
+			HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint16_t*) EightkHzSamples, 1000, DAC_ALIGN_12B_R);
 			HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_SET);
 		}
 		if (mode == 2) { // only yellow
+			HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint16_t*) FourkHzSamples, 2000, DAC_ALIGN_12B_R);
 			HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_SET);
 
 		}
 		if (mode == 3) { // yellow and green
+			HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint16_t*) TwokHzSamples, 4000, DAC_ALIGN_12B_R);
 			HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_SET);
 
@@ -422,12 +440,12 @@ void generateTriangle(uint16_t *sampleArray) {
     }
 }
 
-void generateSin(float32_t *sampleArray) {
+void generateSin(float32_t *sampleArray, int samp) {
 	uint32_t amp = AMPLITUDE/2;
 	float32_t counter = 0.0;
-	for (int i = 0; i <  SAMPLE_NUMBER; i++) {
+	for (int i = 0; i <  samp; i++) {
 	    sampleArray[i] = (amp * arm_sin_f32(counter)) + amp; //https://arm-software.github.io/CMSIS-DSP/main/group__sin.html
-	    counter += (2.0*PI)/(SAMPLE_NUMBER+0.0);
+	    counter += (2.0*PI)/(samp+0.0);
 	}
 }
 /* USER CODE END 4 */
