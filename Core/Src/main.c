@@ -142,15 +142,6 @@ int main(void)
   while (1)
   {
 
-	  for (int i = 0; i < SAMPLE_NUMBER; i++) {
-		  channel1 = sawSamples[i];
-		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, channel1); // D7
-		  //channel2 = triangleSamples[i];
-		  channel2 = sinSamples[i]; //D13
-		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, channel2); // pg 224 in HAL driver manual
-		  HAL_Delay(0.5); // Period =  Number of Samples x Delay
-	  	}
-
 
     /* USER CODE END WHILE */
 
@@ -383,20 +374,8 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/** Timer Interrupt **/
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim) {
-	if (htim == &htim2) {
-		if (currSample == SAMPLE_NUMBER)
-		{
-			currSample = 0;
-		}
-		channel1 = sinSamples[currSample];
-		HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sinSamples[currSample]); // D7
-		currSample++;
+// Timer Interrupt
 
-
-	}
-}
 
 
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin) {

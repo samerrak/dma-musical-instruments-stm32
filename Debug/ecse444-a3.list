@@ -731,9 +731,9 @@ static void MX_GPIO_Init(void)
 
 080005a8 <HAL_GPIO_EXTI_Callback>:
 
-	}
-}
-**/
+// Timer Interrupt
+
+
 
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin) {
  80005a8:	b580      	push	{r7, lr}
