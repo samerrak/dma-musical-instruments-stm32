@@ -31,6 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define SAMPLE_NUMBER 60 // 80 Mhz / 44.1 kHz => Clock F / Sample Rate
 #define AMPLITUDE 4095 // design choice 12 bit DAC resolution
 #define PERIOD 15
 /* USER CODE END PD */
@@ -49,9 +50,9 @@ TIM_HandleTypeDef htim2;
 /* USER CODE BEGIN PV */
 void generateSaw(uint16_t *sampleArray);
 void generateTriangle(uint16_t *sampleArray);
-void generateSin(uint16_t *sampleArray, int samp);
+void generateSin(float32_t *sampleArray);
 void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin);
-// void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim);
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim);
 
 /* USER CODE END PV */
 
@@ -67,21 +68,12 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint32_t SAMPLE_NUMBER; // 80 Mhz / 44.1 kHz => Clock F / Sample Rate
 uint32_t channel1, channel2;
 uint32_t mode; // controls mode of output
 uint8_t currSample; // counter for samples in timer
-uint32_t C6Period = (60000/1000);
-uint32_t D6Period = (60000/1500);
-uint32_t E6Period = (60000/2000);
-
-uint16_t c6Samples[60]; // Set prescaler equal to 10, find counter => 5 seconds
-uint16_t d6Samples[40];
-uint16_t e6Samples[30];
-uint16_t countRuns;
-// uint16_t sawSamples[SAMPLE_NUMBER];
-// uint16_t triangleSamples[SAMPLE_NUMBER];
-
+uint16_t sawSamples[SAMPLE_NUMBER];
+uint16_t triangleSamples[SAMPLE_NUMBER];
+float32_t sinSamples[SAMPLE_NUMBER];
 
 /* USER CODE END 0 */
 
@@ -93,10 +85,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	generateSin(c6Samples, C6Period);
-	generateSin(d6Samples, D6Period);
-	generateSin(e6Samples, E6Period);
-	countRuns = 0;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -125,14 +114,12 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2); // enable interrupts
-  // generateSaw(sawSamples);
-  // generateTriangle(triangleSamples);
 
-
-  // HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t *)c6Samples, 1000, DAC_ALIGN_12B_R);
+  generateSaw(sawSamples);
+  generateTriangle(triangleSamples);
+  generateSin(sinSamples);
+  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
   // HAL_DAC_Start(&hdac1, DAC_CHANNEL_2); // pg 224 in HAL driver manual
-
-  //HAL_StatusTypeDef x = HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint16_t*) c6Samples, (uint16_t) SAMPLE_NUMBER, DAC_ALIGN_12B_R);
 
 
   /* USER CODE END 2 */
@@ -141,7 +128,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
+	  /*
 	  for (int i = 0; i < SAMPLE_NUMBER; i++) {
 		  channel1 = sawSamples[i];
 		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, channel1); // D7
@@ -150,7 +137,7 @@ int main(void)
 		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, channel2); // pg 224 in HAL driver manual
 		  HAL_Delay(0.5); // Period =  Number of Samples x Delay
 	  	}
-
+	  	**/
 
     /* USER CODE END WHILE */
 
@@ -244,7 +231,7 @@ static void MX_DAC1_Init(void)
   /** DAC channel OUT1 config
   */
   sConfig.DAC_SampleAndHold = DAC_SAMPLEANDHOLD_DISABLE;
-  sConfig.DAC_Trigger = DAC_TRIGGER_T2_TRGO;
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
   sConfig.DAC_HighFrequency = DAC_HIGH_FREQUENCY_INTERFACE_MODE_ABOVE_80MHZ;
   sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
   sConfig.DAC_ConnectOnChipPeripheral = DAC_CHIPCONNECT_DISABLE;
@@ -256,7 +243,6 @@ static void MX_DAC1_Init(void)
 
   /** DAC channel OUT2 config
   */
-  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
   if (HAL_DAC_ConfigChannel(&hdac1, &sConfig, DAC_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -325,9 +311,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
-  /* DMAMUX1_OVR_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMAMUX1_OVR_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMAMUX1_OVR_IRQn);
 
 }
 
@@ -383,7 +366,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/** Timer Interrupt **/
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim) {
 	if (htim == &htim2) {
 		if (currSample == SAMPLE_NUMBER)
@@ -404,25 +386,18 @@ void HAL_GPIO_EXTI_Callback (uint16_t GPIO_Pin) {
 		mode = ((mode+1) % 4);
 		HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_RESET); // mode 0 (only blue)
 		HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_RESET);
-		if (countRuns != 0) {
-			while (HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1) != HAL_OK);
-		}
 		if (mode == 1) { // blue and green
-			while (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*) c6Samples, (C6Period-1), DAC_ALIGN_12B_R) != HAL_OK);
 			HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_SET);
 		}
 		if (mode == 2) { // only yellow
-			while (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*) d6Samples, D6Period, DAC_ALIGN_12B_R) != HAL_OK);
 			HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_SET);
 
 		}
 		if (mode == 3) { // yellow and green
-			while (HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*) e6Samples, E6Period, DAC_ALIGN_12B_R) != HAL_OK);
 			HAL_GPIO_WritePin(myLed2_GPIO_Port, myLed2_Pin, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(myLed1_GPIO_Port, myLed1_Pin, GPIO_PIN_SET);
 
 		}
-		countRuns = countRuns + 1;
 
 
 	}
@@ -447,17 +422,13 @@ void generateTriangle(uint16_t *sampleArray) {
     }
 }
 
-void generateSin(uint16_t *sampleArray, int samp) {
-    float32_t amp = (float32_t)AMPLITUDE / 2.0f;
-    float32_t increment = (2.0f * PI) / (float32_t)samp;
-    float32_t counter = 0.0f;
-
-    for (int i = 0; i < samp; i++) {
-        float32_t sineValue = arm_sin_f32(counter);
-        float32_t value = amp * sineValue + amp; // Scale and offset the sine wave
-        sampleArray[i] = (uint16_t)(value + 0.5f); // Add 0.5f for rounding
-        counter += increment;
-    }
+void generateSin(float32_t *sampleArray) {
+	uint32_t amp = AMPLITUDE/2;
+	float32_t counter = 0.0;
+	for (int i = 0; i <  SAMPLE_NUMBER; i++) {
+	    sampleArray[i] = (amp * arm_sin_f32(counter)) + amp; //https://arm-software.github.io/CMSIS-DSP/main/group__sin.html
+	    counter += (2.0*PI)/(SAMPLE_NUMBER+0.0);
+	}
 }
 /* USER CODE END 4 */
 
