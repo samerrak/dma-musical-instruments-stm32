@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE_NUMBER 60 // 80 Mhz / 44.1 kHz => Clock F / Sample Rate
+#define SAMPLE_NUMBER 60
 #define AMPLITUDE 4095 // design choice 12 bit DAC resolution
 #define PERIOD 15
 /* USER CODE END PD */
