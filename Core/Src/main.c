@@ -33,7 +33,6 @@
 /* USER CODE BEGIN PD */
 #define SAMPLE_NUMBER 60
 #define AMPLITUDE 4095 // design choice 12 bit DAC resolution
-#define PERIOD 15
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -71,8 +70,6 @@ static void MX_TIM2_Init(void);
 uint32_t channel1, channel2;
 uint32_t mode; // controls mode of output
 uint8_t currSample; // counter for samples in timer
-uint16_t sawSamples[SAMPLE_NUMBER];
-uint16_t triangleSamples[SAMPLE_NUMBER];
 float32_t sinSamples[SAMPLE_NUMBER];
 
 /* USER CODE END 0 */
@@ -114,12 +111,8 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2); // enable interrupts
-
-  generateSaw(sawSamples);
-  generateTriangle(triangleSamples);
   generateSin(sinSamples);
   HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-  // HAL_DAC_Start(&hdac1, DAC_CHANNEL_2); // pg 224 in HAL driver manual
 
 
   /* USER CODE END 2 */
@@ -128,16 +121,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  /*
-	  for (int i = 0; i < SAMPLE_NUMBER; i++) {
-		  channel1 = sawSamples[i];
-		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, channel1); // D7
-		  //channel2 = triangleSamples[i];
-		  channel2 = sinSamples[i]; //D13
-		  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_2, DAC_ALIGN_12B_R, channel2); // pg 224 in HAL driver manual
-		  HAL_Delay(0.5); // Period =  Number of Samples x Delay
-	  	}
-	  	**/
 
     /* USER CODE END WHILE */
 
@@ -145,9 +128,6 @@ int main(void)
   }
 
   HAL_DAC_Stop(&hdac1, DAC_CHANNEL_1);
-  // HAL_DAC_Stop(&hdac1, DAC_CHANNEL_2); // pg 224 HAL driver
-
-
 
   /* USER CODE END 3 */
 }
@@ -375,7 +355,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim) {
 		channel1 = sinSamples[currSample];
 		HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, sinSamples[currSample]); // D7
 		currSample++;
-
 
 	}
 }
